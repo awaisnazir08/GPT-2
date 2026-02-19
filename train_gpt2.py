@@ -67,11 +67,11 @@ class MLP(nn.Module):
 
 @dataclass
 class GPTConfig:
-    block_size: int = 256
-    vocab_size: int = 65
-    n_layer: int = 6
-    n_head: int = 6
-    n_embd: int = 384
+    block_size: int = 1024 # max sequence length
+    vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
+    n_layer: int = 12 # number of layers
+    n_head: int = 12 # number of attention heads
+    n_embd: int = 768 # dimensionality of the embeddings (should be divisible by n_head)
 
 class GPT(nn.Module):
     
