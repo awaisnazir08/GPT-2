@@ -30,7 +30,7 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         # attention (materializes the large (T,T) matrix  for all the queries and keys)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / torch.sqrt(k.size(-1))) # (B, nh, T, T)
+        att = (q @ k.transpose(-2, -1)) * (1.0 / (k.size(-1) ** 0.5)) # (B, nh, T, T)
         att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf')) # (B, nh, T, T)
         att = F.softmax(att, dim=-1) # (B, nh, T, T)
         y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
@@ -169,4 +169,31 @@ enc = tiktoken.get_encoding("gpt2")
 tokens = enc.encode("Hello, I'm a language model,")
 tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (5, 8)
-tokens = tokens.to('cuda')
+x = tokens.to('cuda')
+
+# generate! right now x is (B, T) where B = 5, T = 8
+# set the seed to 42
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+while x.size(1) < max_length:
+    # forward the model to get the logits for the next token
+    logits = model(x) # (B, T, vocab_size)
+    # take the logits at the last position
+    logits = logits[:, -1, :] # (B, vocab_size)
+    # apply softmax to get probabilities
+    probs = F.softmax(logits, dim=-1) # (B, vocab_size)
+    # do top-k sampling of 50 (huggingface pipeline default)
+    # topk_probs here becomes (5, 50), topk_indices is (5, 50)
+    topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
+    # select a token from the top-k probabilities
+    ix = torch.multinomial(topk_probs, num_samples=1) # (B, 1)
+    # gather the corresponding indices
+    xcol = torch.gather(topk_indices, -1, ix) # (B, 1)
+    # append to the sequence
+    x = torch.cat((x, xcol), dim=1) # (B, T+1)
+
+# print the generated text
+for i in range(num_return_sequences):
+    tokens = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(">", decoded)
