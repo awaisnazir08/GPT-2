@@ -85,7 +85,24 @@ class GPT(nn.Module):
             h = nn.ModuleList(Block(config) for _ in range(config.n_layer)),
             ln_f = nn.LayerNorm(config.n_embd)
         ))
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) 
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+    
+    def forward(self, idx):
+        # idx is of shape (B, T)
+        B, T = idx.size()
+        assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block_size}"
+        # forward the token and position embeddings
+        pos = torch.arange(0, T, dtype=torch.long, device=idx.device) # shape (T)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
+        x = tok_emb + pos_emb # (B, T, n_embd)
+        # forward the blocks of the transformer
+        for block in self.transformer.h:
+            x = block(x)
+        # forward the final layer norm and the classifier
+        x = self.transformer.ln_f(x) # (B, T, n_embd)
+        logits = self.lm_head(x) # (B, T, vocab_size)
+        return logits
 
     @classmethod
     def from_pretrained(cls, model_type):
@@ -136,5 +153,12 @@ class GPT(nn.Module):
         
         return model
 
+# ----------------------------------------------------------------
+
+num_return_sequences = 5
+max_length = 30
+
 model = GPT.from_pretrained('gpt2')
 print("didn't crash, yay!")
+model.eval()
+model.to('cuda')
