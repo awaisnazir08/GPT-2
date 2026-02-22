@@ -162,3 +162,11 @@ model = GPT.from_pretrained('gpt2')
 print("didn't crash, yay!")
 model.eval()
 model.to('cuda')
+
+# prefix tokens
+import tiktoken
+enc = tiktoken.get_encoding("gpt2")
+tokens = enc.encode("Hello, I'm a language model,")
+tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (5, 8)
+tokens = tokens.to('cuda')
