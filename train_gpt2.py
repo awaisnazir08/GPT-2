@@ -164,6 +164,18 @@ else:
     device = "cpu"
 print(f"Using device: {device}")
 
+# get a data batch
+import tiktoken
+enc = tiktoken.get_encoding("gpt2")
+with open('input.txt', 'r') as f:
+    text = f.read()
+text = text[:1000]
+tokens = enc.encode(text)
+B, T = 4, 32
+buf = torch.tensor(tokens[:B*T + 1]) # (B*T)
+x = buf[:-1].view(B, T) # (B, T)
+y = buf[1:].view(B, T) # (B, T)
+
 
 num_return_sequences = 5
 max_length = 30
