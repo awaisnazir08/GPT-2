@@ -88,7 +88,7 @@ class GPT(nn.Module):
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         
         # weight sharing scheme
-        self.lm_head.weight = self.transformer.wte.weight # reason for doing this is that the objective of the token embedding matrix and the language modeling head matrix are the same (same semantic meaning embeddings should be close to each other in the embedding space), so it makes sense to share weights between them
+        self.transformer.wte.weight = self.lm_head.weight # reason for doing this is that the objective of the token embedding matrix and the language modeling head matrix are the same (same semantic meaning embeddings should be close to each other in the embedding space), so it makes sense to share weights between them, and we are sharing (saving) about 30% of the parameters in the model by doing this, which is nice
     
     def forward(self, idx, targets=None):
         # idx is of shape (B, T)
