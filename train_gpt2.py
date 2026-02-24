@@ -200,7 +200,7 @@ class DataLoaderLite:
 if torch.cuda.is_available():
     device = "cuda"
 elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-    device = "mps"
+    device = "cpu"
 else:
     device = "cpu"
 print(f"Using device: {device}")
@@ -210,17 +210,8 @@ if device == "mps":
     torch.set_default_dtype(torch.float32)
 
 # get a data batch
-import tiktoken
-enc = tiktoken.get_encoding("gpt2")
-with open('input.txt', 'r') as f:
-    text = f.read()
-text = text[:1000]
-tokens = enc.encode(text)
-B, T = 4, 32
-buf = torch.tensor(tokens[:B*T + 1]) # (B*T)
-buf = buf.to(device) # move the data to the same device as the model
-x = buf[:-1].view(B, T) # (B, T)
-y = buf[1:].view(B, T) # (B, T)
+
+train_loader = DataLoaderLite(B=4, T=32)
 
 
 num_return_sequences = 5
@@ -233,6 +224,8 @@ model.to(device)
 # optimize!
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 for i in range(50):
+    x, y = train_loader.next_batch()
+    x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
     logits, loss = model(x, y)
     loss.backward()
