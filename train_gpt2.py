@@ -163,6 +163,9 @@ class GPT(nn.Module):
 
 # ----------------------------------------------------------------
 
+
+# ----------------------------------------------------------------
+
 # attempt to auto-detect the device
 if torch.cuda.is_available():
     device = "cuda"
@@ -171,6 +174,10 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
 else:
     device = "cpu"
 print(f"Using device: {device}")
+
+# Fix for MPS: ensure float32 precision (MPS has issues with mixed precision)
+if device == "mps":
+    torch.set_default_dtype(torch.float32)
 
 # get a data batch
 import tiktoken
@@ -181,6 +188,7 @@ text = text[:1000]
 tokens = enc.encode(text)
 B, T = 4, 32
 buf = torch.tensor(tokens[:B*T + 1]) # (B*T)
+buf = buf.to(device) # move the data to the same device as the model
 x = buf[:-1].view(B, T) # (B, T)
 y = buf[1:].view(B, T) # (B, T)
 
@@ -189,12 +197,21 @@ num_return_sequences = 5
 max_length = 30
 
 model = GPT(config=GPTConfig())
-logits, loss = model(x, y)
+model.to(device)
+# logits, loss = model(x, y)
 
-print(logits.shape)
-print(logits.dtype)
+# optimize!
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+for i in range(50):
+    optimizer.zero_grad()
+    logits, loss = model(x, y)
+    loss.backward()
+    optimizer.step()
+    print(f"step {i}: loss {loss.item()}")
+# print(logits.shape)
+# print(logits.dtype)
 # at random initialization, we want each token probability to be roughly uniform, so the loss should be close to -log(1/vocab_size)
-print(loss)
+# print(loss)
 
 import sys; sys.exit(0)
 
