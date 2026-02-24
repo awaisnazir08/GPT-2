@@ -87,7 +87,7 @@ class GPT(nn.Module):
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
     
-    def forward(self, idx):
+    def forward(self, idx, targets=None):
         # idx is of shape (B, T)
         B, T = idx.size()
         assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block_size}"
@@ -102,7 +102,15 @@ class GPT(nn.Module):
         # forward the final layer norm and the classifier
         x = self.transformer.ln_f(x) # (B, T, n_embd)
         logits = self.lm_head(x) # (B, T, vocab_size)
-        return logits
+        loss = None
+        
+        if targets is not None:
+            # reshape so that the tokens in the vocabulary are the last dimension
+            B, T, vocab_size = logits.size()
+            logits = logits.view(B*T, vocab_size)
+            targets = targets.view(B*T)
+            loss = F.cross_entropy(logits, targets) # negative log likelihood loss 
+        return logits, loss
 
     @classmethod
     def from_pretrained(cls, model_type):
@@ -180,8 +188,16 @@ y = buf[1:].view(B, T) # (B, T)
 num_return_sequences = 5
 max_length = 30
 
-model = GPT.from_pretrained('gpt2')
-print("didn't crash, yay!")
+model = GPT(config=GPTConfig())
+logits, loss = model(x, y)
+
+print(logits.shape)
+print(logits.dtype)
+# at random initialization, we want each token probability to be roughly uniform, so the loss should be close to -log(1/vocab_size)
+print(loss)
+
+import sys; sys.exit(0)
+
 model.eval()
 model.to(device)
 
