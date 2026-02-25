@@ -235,7 +235,7 @@ if device == "mps":
 # get a data batch
 train_loader = DataLoaderLite(B=4, T=1024)
 
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision('high') # for faster training on float32 (this is a no-op on other devices, but on mps/amp it can give a significant speedup, and on newer NVIDIA GPUs with TF32 support it can also give a speedup with minimal loss of precision) (upto 8x speedup on MPS which is basically free (no loss of precision))
 
 
 num_return_sequences = 5
@@ -251,7 +251,8 @@ for i in range(50):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    logits, loss = model(x, y)
+    with torch.autocast(device_type=device, dtype=torch.bfloat16): # Use autocast for bfloat16 precision (newer and bettter, as in fp16 we need to use scalers etc that increase complexity)
+        logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
     print(f"step {i}: loss {loss.item()}")
