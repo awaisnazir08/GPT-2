@@ -224,13 +224,18 @@ else:
     device = "cpu"
 print(f"Using device: {device}")
 
+torch.manual_seed(1337)
+if torch.cuda.is_available(): 
+    torch.cuda.manual_seed(1337)
+
 # Fix for MPS: ensure float32 precision (MPS has issues with mixed precision)
 if device == "mps":
     torch.set_default_dtype(torch.float32)
 
 # get a data batch
+train_loader = DataLoaderLite(B=4, T=1024)
 
-train_loader = DataLoaderLite(B=4, T=32)
+torch.set_float32_matmul_precision('high')
 
 
 num_return_sequences = 5
