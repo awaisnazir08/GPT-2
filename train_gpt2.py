@@ -243,16 +243,16 @@ max_length = 30
 
 model = GPT(config=GPTConfig())
 model.to(device)
-# logits, loss = model(x, y)
-
+model = torch.compile(model) # best way and should be used as default always for kernel fusion (minimize round trips between GPU and HBM (GPU memory)) so it makes training significantly faster, especially for smaller models where the forward pass is not very expensive, but we have to do it many times, so the overhead of the Python interpreter becomes significant, and torch.compile helps to eliminate that overhead by fusing the kernels together and minimizing the number of round trips between the GPU and the CPU (where the Python interpreter is running), which can give a significant speedup (up to 10x or more) for training small to medium sized models, and even for larger models it can still give a speedup, but it's not as dramatic since the forward pass is more expensive and dominates the runtime anyway, but it's still recommended to use torch.compile for all training runs since it's basically free and can only help with performance)
 # optimize!
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 for i in range(50):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    with torch.autocast(device_type=device, dtype=torch.bfloat16): # Use autocast for bfloat16 precision (newer and bettter, as in fp16 we need to use scalers etc that increase complexity)
-        logits, loss = model(x, y)
+    # with torch.autocast(device_type=device, dtype=torch.bfloat16): # Use autocast for bfloat16 precision (newer and bettter, as in fp16 we need to use scalers etc that increase complexity)
+    #     logits, loss = model(x, y)
+    logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
     print(f"step {i}: loss {loss.item()}")
