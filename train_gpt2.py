@@ -89,7 +89,18 @@ class GPT(nn.Module):
         
         # weight sharing scheme
         self.transformer.wte.weight = self.lm_head.weight # reason for doing this is that the objective of the token embedding matrix and the language modeling head matrix are the same (same semantic meaning embeddings should be close to each other in the embedding space), so it makes sense to share weights between them, and we are sharing (saving) about 30% of the parameters in the model by doing this, which is nice
-    
+
+        # init params
+        self.apply(self._init_weights)
+        
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        
     def forward(self, idx, targets=None):
         # idx is of shape (B, T)
         B, T = idx.size()
