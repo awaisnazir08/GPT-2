@@ -245,7 +245,7 @@ torch.set_float32_matmul_precision('high') # for faster training on float32 (thi
 num_return_sequences = 5
 max_length = 30
 
-model = GPT(config=GPTConfig())
+model = GPT(config=GPTConfig(vocab_size=50304 ))
 model.to(device)
 model = torch.compile(model) # best way and should be used as default always for kernel fusion (minimize round trips between GPU and HBM (GPU memory)) so it makes training significantly faster, especially for smaller models where the forward pass is not very expensive, but we have to do it many times, so the overhead of the Python interpreter becomes significant, and torch.compile helps to eliminate that overhead by fusing the kernels together and minimizing the number of round trips between the GPU and the CPU (where the Python interpreter is running), which can give a significant speedup (up to 10x or more) for training small to medium sized models, and even for larger models it can still give a speedup, but it's not as dramatic since the forward pass is more expensive and dominates the runtime anyway, but it's still recommended to use torch.compile for all training runs since it's basically free and can only help with performance)
 # optimize!
