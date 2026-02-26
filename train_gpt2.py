@@ -245,11 +245,11 @@ torch.set_float32_matmul_precision('high') # for faster training on float32 (thi
 num_return_sequences = 5
 max_length = 30
 
-model = GPT(config=GPTConfig(vocab_size=50304 ))
+model = GPT(config=GPTConfig(vocab_size=50304))
 model.to(device)
 model = torch.compile(model) # best way and should be used as default always for kernel fusion (minimize round trips between GPU and HBM (GPU memory)) so it makes training significantly faster, especially for smaller models where the forward pass is not very expensive, but we have to do it many times, so the overhead of the Python interpreter becomes significant, and torch.compile helps to eliminate that overhead by fusing the kernels together and minimizing the number of round trips between the GPU and the CPU (where the Python interpreter is running), which can give a significant speedup (up to 10x or more) for training small to medium sized models, and even for larger models it can still give a speedup, but it's not as dramatic since the forward pass is more expensive and dominates the runtime anyway, but it's still recommended to use torch.compile for all training runs since it's basically free and can only help with performance)
 # optimize!
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95))
 for i in range(50):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
@@ -258,8 +258,9 @@ for i in range(50):
     #     logits, loss = model(x, y)
     logits, loss = model(x, y)
     loss.backward()
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # clip the gradient to prevent exploding gradients (especially important for larger models and longer sequences, but good practice in general) this usually happens if we are unlucky and a data batch is bad, it will cause loss to be very large, which will cause the gradients to be very large, which will cause the model to diverge and never recover, so by clipping the gradients we can prevent this from happening and allow the model to recover from bad batches and continue training, which is especially important when training on smaller datasets where we might have more variance in the data batches, but it's also good practice in general to prevent any potential issues with exploding gradients
     optimizer.step()
-    print(f"step {i}: loss {loss.item()}")
+    print(f"step {i:4d} | loss {loss.item():.6f} | grad_norm {norm:.4f} ")
 # print(logits.shape)
 # print(logits.dtype)
 # at random initialization, we want each token probability to be roughly uniform, so the loss should be close to -log(1/vocab_size)
