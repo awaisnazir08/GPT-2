@@ -31,10 +31,14 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         # attention (materializes the large (T,T) matrix  for all the queries and keys)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / (k.size(-1) ** 0.5)) # (B, nh, T, T)
-        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf')) # (B, nh, T, T)
-        att = F.softmax(att, dim=-1) # (B, nh, T, T)
-        y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
+        # att = (q @ k.transpose(-2, -1)) * (1.0 / (k.size(-1) ** 0.5)) # (B, nh, T, T)
+        # att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf')) # (B, nh, T, T)
+        # att = F.softmax(att, dim=-1) # (B, nh, T, T)
+        # y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
+        
+        # using FlashAttention instead of the naive implementation above, which is much faster and more memory efficient, especially for long sequences, since it doesn't materialize the (T, T) attention matrix in memory, but instead computes the attention in a streaming fashion, so it can handle much longer sequences without running out of memory
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True) # (B, nh, T, hs)
+        
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
         # output projection
         y = self.c_proj(y)
