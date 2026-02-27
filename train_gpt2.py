@@ -3,6 +3,7 @@ from logging import config
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import math
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, config):
@@ -249,6 +250,24 @@ model = GPT(config=GPTConfig(vocab_size=50304))
 model.to(device)
 model = torch.compile(model) # best way and should be used as default always for kernel fusion (minimize round trips between GPU and HBM (GPU memory)) so it makes training significantly faster, especially for smaller models where the forward pass is not very expensive, but we have to do it many times, so the overhead of the Python interpreter becomes significant, and torch.compile helps to eliminate that overhead by fusing the kernels together and minimizing the number of round trips between the GPU and the CPU (where the Python interpreter is running), which can give a significant speedup (up to 10x or more) for training small to medium sized models, and even for larger models it can still give a speedup, but it's not as dramatic since the forward pass is more expensive and dominates the runtime anyway, but it's still recommended to use torch.compile for all training runs since it's basically free and can only help with performance)
 # optimize!
+
+max_lr = 6e-4
+min_lr = max_lr * 0.1
+warmup_steps = 10
+max_steps = 50
+def get_lr(it):
+    # 1) linear warmup for warmup_iters steps
+    if it < warmup_steps:
+        return max_lr * it / warmup_steps
+    # 2) if it > lr_decay_iters, return min learning rate
+    if it >= warmup_steps:
+        return min_lr
+    # 3) in between, use cosine decay down to min learning rate
+    decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
+    assert 0 <= decay_ratio <= 1
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
+    return min_lr + coeff * (max_lr - min_lr)
+
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95))
 for i in range(50):
     x, y = train_loader.next_batch()
