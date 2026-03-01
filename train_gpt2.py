@@ -185,6 +185,15 @@ class GPT(nn.Module):
         
         return model
 
+    def configure_optimizers(self, weight_decay, learning_rate, device):
+        # start with all of the candidate parameters (that require grad)
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        # decay_params = 
+        
+
 # ----------------------------------------------------------------
 
 import tiktoken
@@ -269,6 +278,8 @@ def get_lr(it):
     return min_lr + coeff * (max_lr - min_lr)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95))
+
+optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, device=device)
 for i in range(50):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
