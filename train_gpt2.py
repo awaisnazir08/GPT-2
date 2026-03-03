@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import math
 import inspect
+import time
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, config):
@@ -262,6 +263,14 @@ if torch.cuda.is_available():
 if device == "mps":
     torch.set_default_dtype(torch.float32)
 
+total_batch_size = 524288 # 2**19, ~0.5M, in number of tokens
+B = 16 # micro batch size
+T = 1024 # sequence length
+assert total_batch_size % (B * T) == 0, "total_batch_size must be divisible by B * T"
+grad_accum_steps = total_batch_size // (B * T)
+print(f"total desired batch size: {total_batch_size}")
+print(f"=> calculate gradient accumulation steps: {grad_accum_steps}")
+
 # get a data batch
 train_loader = DataLoaderLite(B=4, T=1024)
 
@@ -296,17 +305,30 @@ def get_lr(it):
 # optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95))
 optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, device=device) 
 
-for i in range(50):
-    x, y = train_loader.next_batch()
-    x, y = x.to(device), y.to(device)
+for step in range(max_steps):
+    t0 = time.time()
     optimizer.zero_grad()
-    # with torch.autocast(device_type=device, dtype=torch.bfloat16): # Use autocast for bfloat16 precision (newer and bettter, as in fp16 we need to use scalers etc that increase complexity)
-    #     logits, loss = model(x, y)
-    logits, loss = model(x, y)
-    loss.backward()
+    loss_accum = 0.0
+    for micro_step in range(grad_accum_steps):
+        x, y = train_loader.next_batch()
+        x, y = x.to(device), y.to(device)
+        # with torch.autocast(device_type=device, dtype=torch.bfloat16): # Use autocast for bfloat16 precision (newer and bettter, as in fp16 we need to use scalers etc that increase complexity)
+        #     logits, loss = model(x, y)
+        logits, loss = model(x, y)
+        loss = loss / grad_accum_steps # scale the loss by the number of gradient accumulation steps to get the correct gradient magnitude
+        loss_accum += loss.detach()
+        loss.backward()
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # clip the gradient to prevent exploding gradients (especially important for larger models and longer sequences, but good practice in general) this usually happens if we are unlucky and a data batch is bad, it will cause loss to be very large, which will cause the gradients to be very large, which will cause the model to diverge and never recover, so by clipping the gradients we can prevent this from happening and allow the model to recover from bad batches and continue training, which is especially important when training on smaller datasets where we might have more variance in the data batches, but it's also good practice in general to prevent any potential issues with exploding gradients
+    lr = get_lr(step)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
     optimizer.step()
-    print(f"step {i:4d} | loss {loss.item():.6f} | grad_norm {norm:.4f} ")
+    t1 = time.time()
+    dt = t1 - t0
+    
+    tokens_processed = train_loader.B * train_loader.T * grad_accum_steps
+    tokens_per_sec = tokens_processed / dt
+    print(f"step {step:4d} | loss {loss_accum.item():.6f} | lr {lr:.6f} | grad_norm {norm:.4f} | dt {dt:.2f}ms | tokens/sec {tokens_per_sec:.2f}")
 # print(logits.shape)
 # print(logits.dtype)
 # at random initialization, we want each token probability to be roughly uniform, so the loss should be close to -log(1/vocab_size)
